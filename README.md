@@ -21,3 +21,8 @@ This project solves the problem where Bilibili versions of anime or shows have e
 ## Quick Start
 
 Coming soon...
+
+## License
+
+This project is licensed under the GNU General Public License v3.0.  
+See the [LICENSE](LICENSE) file for details.
