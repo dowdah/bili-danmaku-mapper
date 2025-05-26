@@ -1,0 +1,65 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>player</title>
+    <script src="https://cdn.jsdelivr.net/npm/nplayer@latest/dist/index.min.js"></script>
+    <script src="https://unpkg.com/@nplayer/danmaku@latest/dist/index.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden; /* 防止页面滚动条 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: black;
+            color: white;
+        }
+
+        #nplayer {
+            width: 75%;
+            height: 75%;
+            max-width: 100vw;
+            max-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+<input type="file" id="fileInput" />
+<div id="nplayer"></div>
+<script>
+    fileInput = document.getElementById('fileInput')
+    fileInput.addEventListener('change', function (event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                const danmakuOptions = {items: json.data, speed: 0.5, fontsizeScale: 1.3};
+                const player = new NPlayer.Player({
+                    src: 'file:///Users/sheldon/Documents/github_projects/bili-danmaku-mapper/data/ep17_a.mp4',
+                    plugins: [new NPlayerDanmaku(danmakuOptions)],
+                    seekStep: 3,
+                    volumeStep: 0.05
+                });
+                player.mount("#nplayer");
+                fileInput.style.display = 'none'; // 隐藏文件输入框
+            } catch (err) {
+                console.error('解析 JSON 出错:', err);
+            }
+        };
+        reader.readAsText(file);
+    });
+</script>
+</body>
+</html>
