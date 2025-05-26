@@ -24,24 +24,111 @@ import subprocess
 import bisect
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from tqdm import tqdm
+from dataclasses import dataclass
 
 
-def export_frames_ffmpeg(video_path, output_dir, crop_ratio=0.6, width=256, height=256):
+BASE_DIR = os.environ.get("BASE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
+FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
+FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
+# 视频的纵向裁剪比例，0.6表示仅保留中间60%。可以根据视频字幕、水印等情况调整。
+CROP_RATIO = int(os.environ.get("CROP_RATIO", 0.6))
+# 视频帧的宽度和高度，默认为256x256。可以根据需要调整。
+WIDTH, HEIGHT = int(os.environ.get("WIDTH", 256)), int(os.environ.get("HEIGHT", 256))
+# 锚点间隔帧数
+ANCHOR_INTERVAL = int(os.environ.get("ANCHOR_INTERVAL", 50))
+# 搜索范围系数(占被搜索视频帧数的比例)。若视频间最大帧数差异较大，可适当增大。
+RANGE_FACTOR = float(os.environ.get("RANGE_FACTOR", 0.2))
+# 最大允许的汉明距离，判断是否匹配成功。该参数越大，匹配越宽松，但可能导致错误匹配。
+MAX_HAMMING_DISTANCE = int(os.environ.get("MAX_HAMMING_DISTANCE", 10))
+
+
+@dataclass
+class FrameExportConfig:
+    """
+    视频帧导出配置类。
+
+    包含裁剪比例、缩放宽度和高度等参数。
+    """
+    crop_ratio: float = CROP_RATIO
+    width: int = WIDTH
+    height: int = HEIGHT
+
+
+@dataclass
+class AAPConfig:
+    """
+    自适应锚点推进算法配置类。
+
+    包含锚点间隔、搜索范围系数和最大汉明距离等参数。
+    """
+    anchor_interval: int = ANCHOR_INTERVAL
+    range_factor: float = RANGE_FACTOR
+    max_hamming_distance: int = MAX_HAMMING_DISTANCE
+    filled: bool = True  # 是否对未匹配的B帧填充None
+
+
+class PhashCache:
+    """
+    图像帧的感知哈希值缓存类。
+
+    该类用于缓存一组图像帧的感知哈希（phash）值，避免重复计算。
+    使用PIL加载图像并通过imagehash库计算phash，支持下标访问和len操作。
+
+    属性:
+        frame_paths (list): 图像帧文件路径列表。
+        cache (dict): 已计算的phash缓存，key为帧索引，value为phash对象。
+    """
+    def __init__(self, frame_paths):
+        """
+        初始化PhashCache。
+
+        :param frame_paths: 图像帧文件路径列表
+        """
+        self.frame_paths = frame_paths
+        self.cache = {}
+
+    def __len__(self):
+        """
+        返回帧的数量。
+
+        :return: 帧数量
+        """
+        return len(self.frame_paths)
+
+    def __getitem__(self, idx):
+        """
+        获取指定索引帧的phash值，若已缓存则直接返回，否则计算后缓存并返回。
+
+        :param idx: 帧索引
+        :return: phash对象
+        """
+        if idx in self.cache:
+            return self.cache[idx]
+        path = self.frame_paths[idx]
+        with PIL.Image.open(path) as img:
+            phash = imagehash.phash(img)
+        self.cache[idx] = phash
+        return phash
+
+
+def export_frames_ffmpeg(video_path, output_dir, config: FrameExportConfig=None):
     """
     使用ffmpeg导出视频帧，裁剪并缩放到指定大小
     :param video_path: str，视频文件路径
     :param output_dir: str，输出目录
-    :param crop_ratio: float，比例裁剪，0.6表示裁剪为60%的高度
-    :param width: int，缩放后的宽度
-    :param height: int，缩放后的高度
+    :param config: FrameExportConfig，导出配置，包括裁剪比例、宽度和高度
     :return: None
     """
+    config = config or FrameExportConfig()
+    crop_ratio = config.crop_ratio
+    width = config.width
+    height = config.height
     os.makedirs(output_dir, exist_ok=True)
     crop_start = (1 - crop_ratio) / 2
     crop_expr = f"in_w:in_h*{crop_ratio}:0:in_h*{crop_start}"
     out_pattern = os.path.join(output_dir, "%05d.jpg")
     cmd = [
-        "ffmpeg",
+        FFMPEG_PATH,
         "-hide_banner",
         "-loglevel", "error",
         "-hwaccel", "videotoolbox",
@@ -70,8 +157,19 @@ def load_frame_paths(frame_dir):
     return [os.path.join(frame_dir, f) for f in files]
 
 
-def adaptive_anchor_propagation(phashes_a, phashes_b, anchor_interval=50, search_range_factor=0.2,
-                                max_hamming_distance=10, fill=True):
+def loading_video_paths(video_dir):
+    """
+    加载指定目录下的视频(.mp4)文件路径，按文件名排序
+    :param video_dir: str，视频文件目录
+    :return: list，视频文件路径列表
+    """
+    files = os.listdir(video_dir)
+    files = [f for f in files if f.lower().endswith('.mp4')]
+    files.sort()
+    return [os.path.join(video_dir, f) for f in files]
+
+
+def adaptive_anchor_propagation(phashes_a, phashes_b, config: AAPConfig=None):
     """
     使用自适应锚点推进算法在两组感知哈希值之间建立映射关系。
 
@@ -81,17 +179,18 @@ def adaptive_anchor_propagation(phashes_a, phashes_b, anchor_interval=50, search
 
     :param phashes_a: list-like，A视频所有帧的感知哈希值（支持下标访问和减法运算，返回汉明距离）
     :param phashes_b: list-like，B视频所有帧的感知哈希值（同上）
-    :param anchor_interval: int，锚点间隔帧数
-    :param search_range_factor: float，搜索范围系数，表示在A视频帧数的多少倍范围内搜索匹配
-    :param max_hamming_distance: int，最大允许的汉明距离，超过则视为不匹配
-    :param fill: bool，是否对未匹配帧填充None（默认True）
+    :param config: AAPConfig，自适应锚点推进配置，包括锚点间隔、搜索范围系数、最大汉明距离和是否填充None等参数。
     :return: tuple (b2a_map, anchor_b_indices)
         b2a_map: dict，B视频帧到A视频帧的映射，key为B帧索引，value为A帧索引或None
         anchor_b_indices: list，所有锚点B帧的索引列表
     """
+    config = config or AAPConfig()
+    anchor_interval = config.anchor_interval
+    range_factor = config.range_factor
+    max_hamming_distance = config.max_hamming_distance
     b2a_map = {}
     anchor_b_indices = list(range(0, len(phashes_b), anchor_interval))
-    max_search_range = int(len(phashes_a) * search_range_factor)  # 根据A视频帧数计算搜索范围
+    max_search_range = int(len(phashes_a) * range_factor)  # 根据A视频帧数计算搜索范围
     print("建立锚点匹配并进行自适应锚点推进...")
     # 先建立初始锚点匹配
     for b_idx in tqdm(anchor_b_indices):
@@ -176,7 +275,7 @@ def adaptive_anchor_propagation(phashes_a, phashes_b, anchor_interval=50, search
             else:
                 b2a_map[i] = None
             i += 1
-    if fill:
+    if config.filled:
         # 填充None值
         for b_idx in range(len(phashes_b)):
             if b_idx not in b2a_map:
@@ -207,7 +306,7 @@ def get_video_fps(video_path):
     :return: float，视频帧率
     """
     cmd = [
-        "ffprobe", "-v", "error",
+        FFPROBE_PATH, "-v", "error",
         "-select_streams", "v:0",
         "-show_entries", "stream=r_frame_rate",
         "-of", "default=nokey=1:noprint_wrappers=1",
@@ -253,7 +352,7 @@ def find_nearest_key(keys, target):
         return after
 
 
-def map_danmaku_times(danmaku_json, b2a_map, fps_b, fps_a):
+def map_danmaku_times(danmaku_json, b2a_map, video_path_a, video_path_b):
     """
     将弹幕时间从B视频映射到A视频时间轴。
 
@@ -262,10 +361,13 @@ def map_danmaku_times(danmaku_json, b2a_map, fps_b, fps_a):
 
     :param danmaku_json: dict，包含弹幕数据的JSON对象，需有'data'键，值为弹幕列表
     :param b2a_map: dict，B帧号到A帧号的映射（key为B帧号str/int，value为A帧号或None）
-    :param fps_b: float，B视频帧率
+    :param video_path_a: str，A视频文件路径
+    :param video_path_b: str，B视频文件路径
     :param fps_a: float，A视频帧率
     :return: dict，时间已映射到A视频的弹幕JSON对象
     """
+    fps_a = get_video_fps(video_path_a)
+    fps_b = get_video_fps(video_path_b)
     b_keys = sorted(int(k) for k in b2a_map.keys() if b2a_map[k] is not None)
     for item in danmaku_json['data']:
         time_b = item['time']       # B视频时间（秒）
@@ -276,133 +378,92 @@ def map_danmaku_times(danmaku_json, b2a_map, fps_b, fps_a):
         # A视频帧号换算为时间
         time_a = int(a_frame) / fps_a
         item['time'] = time_a
+    danmaku_json['data'] = sorted(danmaku_json['data'], key=lambda x: x['time'])
     return danmaku_json
 
 
-class PhashCache:
+def mp4s_2_frames(mp4s_dir, max_workers=4, delete_mp4=True, config: FrameExportConfig=None):
+    config = config or FrameExportConfig()
+    mp4_paths = loading_video_paths(mp4s_dir)
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        futures = []
+        for mp4_path in mp4_paths:
+            mp4_filename = os.path.splitext(os.path.basename(mp4_path))[0]
+            frame_dir = os.path.join(mp4s_dir, mp4_filename)
+            os.makedirs(frame_dir, exist_ok=True)
+            futures.append(pool.submit(export_frames_ffmpeg, mp4_path, frame_dir, config))
+        for future in tqdm(futures, desc="导出帧"):
+            future.result()
+    if delete_mp4:
+        for mp4_path in mp4_paths:
+            os.remove(mp4_path)
+        else:
+            print(f"已删除原始视频文件：{mp4s_dir}/*.mp4")
+
+
+def calc_b2a_map_with_frames(frames_a_dir, frames_b_dir, config: AAPConfig=None, export_csv_path=None,
+                             export_json_path=None):
     """
-    图像帧的感知哈希值缓存类。
+    计算B视频帧到A视频帧的映射关系。
 
-    该类用于缓存一组图像帧的感知哈希（phash）值，避免重复计算。
-    使用PIL加载图像并通过imagehash库计算phash，支持下标访问和len操作。
-
-    属性:
-        frame_paths (list): 图像帧文件路径列表。
-        cache (dict): 已计算的phash缓存，key为帧索引，value为phash对象。
+    :param frames_a_dir: str，A视频帧目录
+    :param frames_b_dir: str，B视频帧目录
+    :param anchor_interval: int，锚点间隔帧数
+    :param range_factor: float，搜索范围系数
+    :param max_hamming_distance: int，最大允许的汉明距离
+    :param export_csv_path: str，可选，保存映射关系到CSV文件路径
+    :param export_json_path: str，可选，保存映射关系到JSON文件路径
+    :return: dict，B到A的映射关系（key为B帧索引，value为A帧索引或None）
     """
-    def __init__(self, frame_paths):
-        """
-        初始化PhashCache。
-
-        :param frame_paths: 图像帧文件路径列表
-        """
-        self.frame_paths = frame_paths
-        self.cache = {}
-
-    def __len__(self):
-        """
-        返回帧的数量。
-
-        :return: 帧数量
-        """
-        return len(self.frame_paths)
-
-    def __getitem__(self, idx):
-        """
-        获取指定索引帧的phash值，若已缓存则直接返回，否则计算后缓存并返回。
-
-        :param idx: 帧索引
-        :return: phash对象
-        """
-        if idx in self.cache:
-            return self.cache[idx]
-        path = self.frame_paths[idx]
-        with PIL.Image.open(path) as img:
-            phash = imagehash.phash(img)
-        self.cache[idx] = phash
-        return phash
-
-
-# class Options:
-#     """
-#     配置选项类，用于存储和管理各种参数。
-#
-#     该类用于集中管理脚本运行所需的各种配置选项，便于修改和维护。
-#     """
-#     def __init__(self, save_frames=True, save_b2a_json=False,
-#                  mapped_dms_path=None, frame_dirs=None, crop_ratio=0.6, width=256, height=256,
-#                  anchor_interval=50, search_factor=0.2, max_hamming_distance=10):
-#         base_dir = os.path.dirname(os.path.abspath(__file__))
-#         self.save_frames = save_frames
-#         self.save_b2a_json = save_b2a_json
-#         self.mapped_dms_path = mapped_dms_path or os.path.join(base_dir, "dms_mapped.json")
-#         self.frame_dirs = frame_dirs or [os.path.join(base_dir, "frames_a"), os.path.join(base_dir, "frames_b")]
-#         self.crop_ratio = crop_ratio
-#         self.width = width
-#         self.height = height
-#         self.anchor_interval = anchor_interval
-#         self.search_factor = search_factor
-#         self.max_hamming_distance = max_hamming_distance
-
-
-if __name__ == "__main__":
-    BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-    SAVE_FRAMES = True  # 是否保存帧图像
-    SAVE_B2A_JSON = True  # 是否保存B到A的映射JSON
-    VIDEO_PATHS = [os.path.join(BASE_DIR, "ep13_a.mp4"), os.path.join(BASE_DIR, "ep13_b.mp4")]
-    RAW_DMS_PATH = os.path.join(BASE_DIR, "dms.json")  # 原始弹幕文件路径
-    MAPPED_DMS_PATH = os.path.join(BASE_DIR, "dms_mapped.json")
-    FRAME_DIRS = [os.path.join(BASE_DIR, "frames_a"), os.path.join(BASE_DIR, "frames_b")]
-    CROP_RATIO = 0.6 # 视频的纵向裁剪比例，0.6表示仅保留中间60%。可以根据视频字幕、水印等情况调整。
-    WIDTH, HEIGHT = 256, 256 # 输出帧的宽度和高度
-    ANCHOR_INTERVAL = 50  # 锚点间隔帧数
-    SEARCH_FACTOR = 0.2  # 搜索范围系数(占被搜索视频帧数的比例)。若视频间最大帧数差异较大，可适当增大。
-    MAX_HAMMING_DISTANCE = 10  # 最大允许的汉明距离，判断是否匹配成功。该参数越大，匹配越宽松，但可能导致错误匹配。
-    EXPORT_B2A_CSV_PATH = os.path.join(BASE_DIR, "b2a_mapping.csv")
-    EXPORT_B2A_JSON_PATH = os.path.join(BASE_DIR, "b2a_mapping.json")
-
-    # 1. 导出帧(如果不存在)
-    if not all([os.path.exists(frame_dir) for frame_dir in FRAME_DIRS]):
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [pool.submit(export_frames_ffmpeg, video_path, frame_dir, CROP_RATIO, WIDTH, HEIGHT)
-                       for video_path, frame_dir in zip(VIDEO_PATHS, FRAME_DIRS)]
-            for future in futures:
-                future.result()
-
-    # 2. 帧级匹配主流程
-    frames_a_paths = load_frame_paths(FRAME_DIRS[0])
-    frames_b_paths = load_frame_paths(FRAME_DIRS[1])
-
+    config = config or AAPConfig()
+    frames_a_paths = load_frame_paths(frames_a_dir)
+    frames_b_paths = load_frame_paths(frames_b_dir)
     phashes_a = PhashCache(frames_a_paths)
     phashes_b = PhashCache(frames_b_paths)
 
-    b2a_map, anchor_b_indices = adaptive_anchor_propagation(phashes_a, phashes_b, ANCHOR_INTERVAL, SEARCH_FACTOR,
-                                                            MAX_HAMMING_DISTANCE)
+    b2a_map, anchor_b_indices = adaptive_anchor_propagation(phashes_a, phashes_b, config)
 
-    print("匹配完成。")
+    if export_csv_path is not None:
+        save_mapping_csv(export_csv_path, b2a_map)
+        print(f"B到A的映射已保存到 {export_csv_path}")
 
-    print("自动获取帧率...")
-    fps_a = get_video_fps(VIDEO_PATHS[0])
-    fps_b = get_video_fps(VIDEO_PATHS[1])
-    print(f"A视频帧率: {fps_a:.3f}  B视频帧率: {fps_b:.3f}")
+    if export_json_path is not None:
+        save_json(export_json_path, b2a_map)
+        print(f"B到A的映射已保存到 {export_json_path}")
 
-    danmaku = load_json(RAW_DMS_PATH)
-    danmaku_mapped = map_danmaku_times(danmaku, b2a_map, fps_b, fps_a)
-    danmaku_mapped['data'] = sorted(danmaku_mapped['data'], key=lambda x: x['time'])
-    save_json(MAPPED_DMS_PATH, danmaku_mapped)
-    print(f"弹幕时间已映射，结果保存到 {MAPPED_DMS_PATH}")
+    return b2a_map
 
-    if not SAVE_FRAMES:
-        # 删除帧目录
-        for frame_dir in FRAME_DIRS:
-            if os.path.exists(frame_dir):
-                for file in os.listdir(frame_dir):
-                    os.remove(os.path.join(frame_dir, file))
-                os.rmdir(frame_dir)
-        print("已删除帧图像目录。")
 
-    if SAVE_B2A_JSON:
-        save_json(EXPORT_B2A_JSON_PATH, b2a_map)
-        print(f"B到A的映射已保存到 {EXPORT_B2A_JSON_PATH}")
+def map_danmaku_by_video_paths(video_path_a, video_path_b, raw_dms_path, export_dms_path,
+                               f_config: FrameExportConfig=None, aap_config: AAPConfig=None):
+    temp_dir = os.path.join(BASE_DIR, "tmp")
+    frames_a_dir = os.path.join(temp_dir, "frames_a")
+    frames_b_dir = os.path.join(temp_dir, "frames_b")
+    os.makedirs(frames_a_dir, exist_ok=True)
+    os.makedirs(frames_b_dir, exist_ok=True)
+    f_config = f_config or FrameExportConfig()
+    aap_config = aap_config or AAPConfig()
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(export_frames_ffmpeg, video_path_a, frames_a_dir, f_config),
+            pool.submit(export_frames_ffmpeg, video_path_b, frames_b_dir, f_config)
+        ]
+        for future in tqdm(futures, desc="导出视频帧"):
+            future.result()
+    b2a_map = calc_b2a_map_with_frames(frames_a_dir, frames_b_dir, aap_config)
+    danmaku = load_json(raw_dms_path)
+    danmaku_mapped = map_danmaku_times(danmaku, b2a_map, video_path_a, video_path_b)
+    save_json(export_dms_path, danmaku_mapped)
 
-    print("所有操作完成。")
+
+def map_danmaku_by_frame_dirs(frames_a_dir, frames_b_dir, raw_dms_path, export_dms_path, config: AAPConfig=None):
+    config = config or AAPConfig()
+    b2a_map = calc_b2a_map_with_frames(frames_a_dir, frames_b_dir, config)
+    danmaku = load_json(raw_dms_path)
+    danmaku_mapped = map_danmaku_times(danmaku, b2a_map, frames_a_dir, frames_b_dir)
+    save_json(export_dms_path, danmaku_mapped)
+
+
+if __name__ == "__main__":
+    mp4s_2_frames("/Users/sheldon/Documents/github_projects/bili-danmaku-mapper/data/bangumi/28235123",
+                  delete_mp4=False)
