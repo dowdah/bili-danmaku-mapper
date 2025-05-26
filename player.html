@@ -33,32 +33,55 @@
     </style>
 </head>
 <body>
-<input type="file" id="fileInput" />
+<input type="file" id="videoInput" accept="video/*" />
+<input type="file" id="danmakuInput" accept=".json" />
 <div id="nplayer"></div>
 <script>
-    fileInput = document.getElementById('fileInput')
-    fileInput.addEventListener('change', function (event) {
-        const file = event.target.files[0];
-        if (!file) return;
+    let videoFile = null;
+    let danmakuFile = null;
 
+    const videoInput = document.getElementById('videoInput');
+    const danmakuInput = document.getElementById('danmakuInput');
+
+    function tryInitPlayer() {
+        if (!videoFile || !danmakuFile) return;
+
+        // 读取弹幕JSON
         const reader = new FileReader();
         reader.onload = function (e) {
             try {
                 const json = JSON.parse(e.target.result);
-                const danmakuOptions = {items: json.data, speed: 0.5, fontsizeScale: 1.3};
+                const danmakuOptions = {
+                    items: json.data,
+                    speed: 0.5,
+                    fontsizeScale: 1.3
+                };
+                // 视频文件本地URL
+                const videoUrl = URL.createObjectURL(videoFile);
                 const player = new NPlayer.Player({
-                    src: 'file:///Users/sheldon/Documents/github_projects/bili-danmaku-mapper/data/ep17_a.mp4',
+                    src: videoUrl,
                     plugins: [new NPlayerDanmaku(danmakuOptions)],
                     seekStep: 3,
                     volumeStep: 0.05
                 });
                 player.mount("#nplayer");
-                fileInput.style.display = 'none'; // 隐藏文件输入框
+                videoInput.style.display = 'none';
+                danmakuInput.style.display = 'none';
             } catch (err) {
                 console.error('解析 JSON 出错:', err);
             }
         };
-        reader.readAsText(file);
+        reader.readAsText(danmakuFile);
+    }
+
+    videoInput.addEventListener('change', function (event) {
+        videoFile = event.target.files[0];
+        tryInitPlayer();
+    });
+
+    danmakuInput.addEventListener('change', function (event) {
+        danmakuFile = event.target.files[0];
+        tryInitPlayer();
     });
 </script>
 </body>
