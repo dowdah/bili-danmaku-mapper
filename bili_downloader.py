@@ -20,11 +20,12 @@ import os
 import time
 import xmltodict
 import asyncio
+from tqdm import tqdm
 from bilibili_api import Geetest, GeetestType, login_v2, sync, Credential, bangumi, HEADERS, get_client, video
 
 
-BASE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-FFMPEG_PATH = 'ffmpeg'
+BASE_DIR = os.environ.get("BASE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
+FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 cookies_path = os.path.join(BASE_DIR, "cookies.json")
 
 
@@ -113,21 +114,32 @@ def xml_2_json(xml_str:str):
     return json_out, len(json_conversion)
 
 
-async def download(url: str, out: str, intro: str):
-    dwn_id = await get_client().download_create(url, HEADERS)
-    bts = 0
-    tot = get_client().download_content_length(dwn_id)
-    with open(out, "wb") as file:
-        while True:
-            print(f"{intro} - {out} [{bts} / {tot}]", end="\r")
-            bts += file.write(await get_client().download_chunk(dwn_id))
-            if bts == tot:
-                break
-    print()
+async def download(url: str, out: str, intro: str, retries: int = 3):
+    for attempt in range(retries):
+        try:
+            dwn_id = await get_client().download_create(url, HEADERS)
+            tot = get_client().download_content_length(dwn_id)
+            bts = 0
+            with open(out, "wb") as file, tqdm(total=tot, unit="B", unit_scale=True, desc=f"{intro} - {os.path.basename(out)}") as pbar:
+                while True:
+                    chunk = await get_client().download_chunk(dwn_id)
+                    if not chunk:
+                        break
+                    bts += file.write(chunk)
+                    pbar.update(len(chunk))
+                    if bts >= tot:
+                        break
+            return
+        except Exception as e:
+            print(f"下载失败（第 {attempt + 1} 次尝试）: {e}")
+            if attempt == retries - 1:
+                raise
+            await asyncio.sleep(1)  # 简单退避
 
 
 async def download_bangumi(media_id, cred):
     output_dir = os.path.join(BASE_DIR, "bangumi", str(media_id))
+    os.makedirs(output_dir, exist_ok=True)
     # 实例化 Bangumi 类
     b = bangumi.Bangumi(media_id=media_id, credential=cred)
     # 获取所有剧集
@@ -153,22 +165,25 @@ async def download_episode(ep: bangumi.Episode, out: str):
     # 有 MP4 流 / FLV 流两种可能
     if detecter.check_video_and_audio_stream():
         # MP4 流下载
-        await download(streams[0].url, "video_temp.m4s", "视频流")
-        await download(streams[1].url, "audio_temp.m4s", "音频流")
+        video_temp_path = os.path.join(BASE_DIR, 'video_temp.mp4')
+        audio_temp_path = os.path.join(BASE_DIR, 'audio_temp.mp4')
+        await download(streams[0].url, video_temp_path, "视频流")
+        await download(streams[1].url, audio_temp_path, "音频流")
         # 混流
         os.system(
-            f"{FFMPEG_PATH} -i video_temp.m4s -i audio_temp.m4s -vcodec copy -acodec copy {out}"
+            f"{FFMPEG_PATH} -i {video_temp_path} -i {audio_temp_path} -vcodec copy -acodec copy {out}"
         )
         # 删除临时文件
-        os.remove("video_temp.m4s")
-        os.remove("audio_temp.m4s")
+        os.remove(video_temp_path)
+        os.remove(audio_temp_path)
     else:
         # FLV 流下载
-        await download(streams[0].url, "flv_temp.flv", "FLV 音视频流")
+        flv_temp_path = os.path.join(BASE_DIR, 'flv_temp.mp4')
+        await download(streams[0].url, flv_temp_path, "FLV 音视频流")
         # 转换文件格式
-        os.system(f"{FFMPEG_PATH} -i flv_temp.flv {out}")
+        os.system(f"{FFMPEG_PATH} -i {flv_temp_path} {out}")
         # 删除临时文件
-        os.remove("flv_temp.flv")
+        os.remove(flv_temp_path)
 
     print(f"已下载为：{out}")
 
