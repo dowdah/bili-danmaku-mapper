@@ -201,19 +201,6 @@ async def download_ep_danmaku(ep: bangumi.Episode, out: str):
     print(f"已下载弹幕：{out}，共 {len_danmu} 条")
 
 
-async def get_bangumi_info(bangumi_id: int, cred: Credential):
-    """
-    获取番剧信息
-    :param bangumi_id: 番剧ID
-    :param cred: 登录凭证
-    :return: 番剧信息字典
-    """
-    b = bangumi.Bangumi(bangumi_id, credential=cred)
-    eps = await b.get_episodes()
-    ep_info = {ep.get_epid(): await ep.get_episode_info() for ep in eps}
-    return ep_info
-
-
 if __name__ == "__main__":
     if os.path.exists(cookies_path):
         with open(cookies_path, "r", encoding="utf-8") as f:
