@@ -216,4 +216,4 @@ if __name__ == "__main__":
         cred = sync(login())
         with open(cookies_path, "w", encoding="utf-8") as f:
             json.dump(cred.get_cookies(), f, ensure_ascii=False, indent=4)
-    asyncio.run(download_bangumi(28235123, cred))  # 替换为实际的番剧ID
+    asyncio.run(download_bangumi(int(input("输入番剧media_id:")), cred))  # 替换为实际的番剧ID
