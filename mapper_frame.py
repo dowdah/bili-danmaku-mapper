@@ -31,7 +31,7 @@ BASE_DIR = os.environ.get("BASE_DIR", os.path.join(os.path.dirname(os.path.abspa
 FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
 FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
 # 视频的纵向裁剪比例，0.6表示仅保留中间60%。可以根据视频字幕、水印等情况调整。
-CROP_RATIO = int(os.environ.get("CROP_RATIO", 0.6))
+CROP_RATIO = float(os.environ.get("CROP_RATIO", 0.6))
 # 视频帧的宽度和高度，默认为256x256。可以根据需要调整。
 WIDTH, HEIGHT = int(os.environ.get("WIDTH", 256)), int(os.environ.get("HEIGHT", 256))
 # 锚点间隔帧数
