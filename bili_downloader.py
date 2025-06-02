@@ -69,7 +69,7 @@ async def login() -> Credential:
         print(qr.get_qrcode_terminal())  # 生成终端二维码文本，打印
         while not qr.has_done():  # 在完成扫描前轮询
             print(await qr.check_state())  # 检查状态
-            time.sleep(1)  # 轮训间隔建议 >=1s
+            await asyncio.sleep(1)  # 轮训间隔建议 >=1s
         cred = qr.get_credential()
 
     # 安全验证
