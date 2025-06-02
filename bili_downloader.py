@@ -90,7 +90,7 @@ async def login() -> Credential:
     return cred
 
 
-def xml_2_json(xml_str:str):
+def xml_2_json(xml_str: str) -> tuple[dict, int]:
     """
     将B站的XML弹幕数据转换为JSON格式，供NPlayer使用。
     :param xml_str: B站的XML弹幕数据字符串
@@ -114,7 +114,7 @@ def xml_2_json(xml_str:str):
     return json_out, len(json_conversion)
 
 
-async def download(url: str, out: str, intro: str, retries: int = 3):
+async def download(url: str, out: str, intro: str, retries: int = 3) -> None:
     for attempt in range(retries):
         try:
             dwn_id = await get_client().download_create(url, HEADERS)
@@ -137,7 +137,7 @@ async def download(url: str, out: str, intro: str, retries: int = 3):
             await asyncio.sleep(1)  # 简单退避
 
 
-async def download_bangumi(media_id, cred):
+async def download_bangumi(media_id: int, cred: Credential) -> None:
     output_dir = os.path.join(BASE_DIR, "bangumi", str(media_id))
     os.makedirs(output_dir, exist_ok=True)
     # 实例化 Bangumi 类
@@ -148,7 +148,7 @@ async def download_bangumi(media_id, cred):
         await download_ep_danmaku(ep, os.path.join(output_dir, f"dms_raw_{idx}.json"))
 
 
-async def download_episode(ep: bangumi.Episode, out: str):
+async def download_episode(ep: bangumi.Episode, out: str) -> None:
     print(f"########## {await ep.get_bvid()} ##########")
     # 获取视频下载链接
     download_url_data = await ep.get_download_url()
@@ -188,7 +188,7 @@ async def download_episode(ep: bangumi.Episode, out: str):
     print(f"已下载为：{out}")
 
 
-async def download_ep_danmaku(ep: bangumi.Episode, out: str):
+async def download_ep_danmaku(ep: bangumi.Episode, out: str) -> None:
     """
     下载番剧的弹幕
     :param ep: 番剧剧集对象
