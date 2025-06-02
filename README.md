@@ -119,8 +119,8 @@ Currently outputs nplayer-compatible JSON danmaku; can be extended to support AS
 | Parameter            | Description                                                                                        | Req. | Default      |
 |----------------------|----------------------------------------------------------------------------------------------------|:----:|--------------|
 | BASE_DIR             | Data directory for the program                                                                     |  ❌   | Project root |
-| FFMPEG_PATH          | Path to ffmpeg executable. If already in PATH, leave blank.                                        |  ❌   | ffmpeg       |
-| FFPROBE_PATH         | Path to ffprobe executable. If already in PATH, leave blank.                                       |  ❌   | ffprobe      |
+| FFMPEG_PATH          | Path to ffmpeg executable. If already in PATH, leave unset.                                        |  ❌   | ffmpeg       |
+| FFPROBE_PATH         | Path to ffprobe executable. If already in PATH, leave unset.                                       |  ❌   | ffprobe      |
 | CROP_RATIO           | Vertical cropping ratio, adjust for subtitles/watermarks, etc.                                     |  ❌   | 0.6          |
 | WIDTH                | Extracted video frame width                                                                        |  ❌   | 256          |
 | HEIGHT               | Extracted video frame height                                                                       |  ❌   | 256          |
