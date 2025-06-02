@@ -1,0 +1,88 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>player</title>
+    <script src="https://cdn.jsdelivr.net/npm/nplayer@latest/dist/index.min.js"></script>
+    <script src="https://unpkg.com/@nplayer/danmaku@latest/dist/index.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden; /* 防止页面滚动条 */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: black;
+            color: white;
+        }
+
+        #nplayer {
+            width: 75%;
+            height: 75%;
+            max-width: 100vw;
+            max-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+<input type="file" id="videoInput" accept="video/*" />
+<input type="file" id="danmakuInput" accept=".json" />
+<div id="nplayer"></div>
+<script>
+    let videoFile = null;
+    let danmakuFile = null;
+
+    const videoInput = document.getElementById('videoInput');
+    const danmakuInput = document.getElementById('danmakuInput');
+
+    function tryInitPlayer() {
+        if (!videoFile || !danmakuFile) return;
+
+        // 读取弹幕JSON
+        const reader = new FileReader();
+        reader.onload = function (e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                const danmakuOptions = {
+                    items: json.data,
+                    speed: 0.5,
+                    fontsizeScale: 1.3
+                };
+                // 视频文件本地URL
+                const videoUrl = URL.createObjectURL(videoFile);
+                const player = new NPlayer.Player({
+                    src: videoUrl,
+                    plugins: [new NPlayerDanmaku(danmakuOptions)],
+                    seekStep: 4,
+                    volumeStep: 0.05
+                });
+                player.mount("#nplayer");
+                videoInput.style.display = 'none';
+                danmakuInput.style.display = 'none';
+            } catch (err) {
+                console.error('解析 JSON 出错:', err);
+            }
+        };
+        reader.readAsText(danmakuFile);
+    }
+
+    videoInput.addEventListener('change', function (event) {
+        videoFile = event.target.files[0];
+        tryInitPlayer();
+    });
+
+    danmakuInput.addEventListener('change', function (event) {
+        danmakuFile = event.target.files[0];
+        tryInitPlayer();
+    });
+</script>
+</body>
+</html>
