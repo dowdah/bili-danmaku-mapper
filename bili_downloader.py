@@ -80,7 +80,7 @@ async def login() -> Credential:
         gee.start_geetest_server()                                          # 在本地部署网页端测试服务
         print(gee.get_geetest_server_url())                                 # 获取本地服务链接
         while not gee.has_done():                                           # 如果测试未完成
-            pass                                                            # 就等待
+            await asyncio.sleep(0.1)                                        # 就等待并释放控制
         gee.close_geetest_server()                                          # 关闭部署的网页端测试服务
         print("result:", gee.get_result())
         await cred.send_sms(gee)                                            # 发送验证码
