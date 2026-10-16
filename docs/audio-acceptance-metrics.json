@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "generated_date": "2026-10-14",
+  "python": "3.11.13",
+  "scope": "Synthetic moving texture and chirp-mixture soundtracks; no real anime acceptance",
+  "source_audio_rate": 44100,
+  "target_audio_rate": 48000,
+  "codec": "AAC 96k",
+  "metrics": [
+    {
+      "scenario": "head_cut",
+      "counts": {
+        "total": 83,
+        "reliable": 83,
+        "estimated": 0,
+        "unmapped": 0
+      },
+      "rates": {
+        "reliable": 1.0,
+        "estimated": 0.0,
+        "unmapped": 0.0
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.003401360544217802,
+      "max_error_seconds": 0.00340136054421869,
+      "elapsed_seconds": 0.3069890420883894,
+      "audio_anchors": 18,
+      "cache_bytes": 205652
+    },
+    {
+      "scenario": "middle_cut",
+      "counts": {
+        "total": 80,
+        "reliable": 70,
+        "estimated": 0,
+        "unmapped": 10
+      },
+      "rates": {
+        "reliable": 0.875,
+        "estimated": 0.0,
+        "unmapped": 0.125
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.02476190476190432,
+      "max_error_seconds": 0.02476190476190432,
+      "elapsed_seconds": 0.28068900015205145,
+      "audio_anchors": 17,
+      "cache_bytes": 202945
+    },
+    {
+      "scenario": "target_cut",
+      "counts": {
+        "total": 90,
+        "reliable": 75,
+        "estimated": 0,
+        "unmapped": 15
+      },
+      "rates": {
+        "reliable": 0.8333333333333334,
+        "estimated": 0.0,
+        "unmapped": 0.16666666666666666
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.02167800453514701,
+      "max_error_seconds": 0.02167800453514701,
+      "elapsed_seconds": 0.29257474979385734,
+      "audio_anchors": 18,
+      "cache_bytes": 202377
+    },
+    {
+      "scenario": "volume",
+      "counts": {
+        "total": 90,
+        "reliable": 90,
+        "estimated": 0,
+        "unmapped": 0
+      },
+      "rates": {
+        "reliable": 1.0,
+        "estimated": 0.0,
+        "unmapped": 0.0
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0,
+      "max_error_seconds": 0.0,
+      "elapsed_seconds": 0.28631412517279387,
+      "audio_anchors": 20,
+      "cache_bytes": 212579
+    },
+    {
+      "scenario": "silence",
+      "counts": {
+        "total": 90,
+        "reliable": 65,
+        "estimated": 0,
+        "unmapped": 25
+      },
+      "rates": {
+        "reliable": 0.7222222222222222,
+        "estimated": 0.0,
+        "unmapped": 0.2777777777777778
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0,
+      "max_error_seconds": 0.0,
+      "elapsed_seconds": 0.2807959169149399,
+      "audio_anchors": 16,
+      "cache_bytes": 194561
+    },
+    {
+      "scenario": "origin",
+      "counts": {
+        "total": 90,
+        "reliable": 90,
+        "estimated": 0,
+        "unmapped": 0
+      },
+      "rates": {
+        "reliable": 1.0,
+        "estimated": 0.0,
+        "unmapped": 0.0
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0,
+      "max_error_seconds": 0.0,
+      "elapsed_seconds": 0.3600524999201298,
+      "audio_anchors": 20,
+      "cache_bytes": 213104
+    },
+    {
+      "scenario": "fully_obscured_hybrid",
+      "counts": {
+        "total": 80,
+        "reliable": 80,
+        "estimated": 0,
+        "unmapped": 0
+      },
+      "rates": {
+        "reliable": 1.0,
+        "estimated": 0.0,
+        "unmapped": 0.0
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.003401360544217802,
+      "max_error_seconds": 0.00340136054421869,
+      "elapsed_seconds": 0.39067070791497827,
+      "audio_anchors": 18,
+      "cache_bytes": 222184,
+      "visual_only_counts": {
+        "total": 80,
+        "reliable": 0,
+        "estimated": 0,
+        "unmapped": 80
+      }
+    }
+  ]
+}

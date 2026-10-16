@@ -238,7 +238,7 @@ def generate(experiment,output):
     lines+=['','## 限制与真实影片复核','',
             f"发布默认调度为 `{metrics['release_policy']['default_hybrid_strategy']}`，全局默认软件解码。整片表中的新版软件和硬件候选均显式启用了 `audio_first`；这部影片覆盖率下降，音频优先暂不作为默认，不能把该表说成默认流程的整片验收。缓存与解码调度优化对两种策略均有效。", '',
             '真实影片准确率等待人工标注。自动一致性、覆盖率和自对齐误差不能替代正确率。复核清单包含30个固定均匀位置及所有检测到的断点、冲突；图片仅提供少量示例。',
-            '', f"[复核页面]({root/'review/review.html'}) · [机器可读复核清单]({root/'review/review.json'})。共30组对照截图；所有位置的 human_verified 仍为 false。", 
+            '', f"[复核页面]({root/'review/review.html'}) · [机器可读复核清单]({root/'review/review.json'})。共30组对照截图；所有位置的 human_verified 仍为 false。",
             '', '应用冷缓存不代表物理磁盘冷缓存；未清理系统缓存。CPU计时与按秒采样的进程树内存见JSON；更短的内存峰值可能漏采。阶段计时存在嵌套，不能直接相加。',
             '', '计时源码已分别冻结：旧版baseline、新版软件pre-hardware-select、硬件timed-hardware-source。最终版另修补损坏压缩缓存和错误身份JSON的恢复，正常输入的匹配流程未改变；后端拆分后的软件整片暖缓存输出也已单独对照。具体摘要见JSON。',
             '', '诊断中的字节数是逻辑读取量，未测物理磁盘I/O。默认仍使用软件解码，硬件需显式选择。']
