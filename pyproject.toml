@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=65"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bili-danmaku-mapper"
+version = "0.11.2"
+description = "CPU video sequence alignment and Bilibili danmaku migration"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "GPL-3.0-or-later"}
+dependencies = [
+  "numpy==2.2.6", "pillow==11.2.1", "ImageHash==4.3.2",
+  "python-dotenv==1.1.0", "tqdm==4.67.1", "xmltodict==0.14.2", "scipy==1.17.1",
+]
+
+[project.optional-dependencies]
+download = [
+  "bilibili-api-python==17.2.0", "curl_cffi==0.11.1", "yarl==1.18.3",
+  "pycryptodomex==3.21.0", "qrcode==8.2", "qrcode-terminal==0.8",
+  "requests==2.32.3", "beautifulsoup4==4.13.4", "PyYAML==6.0.2",
+  "APScheduler==3.11.0", "PyJWT==2.10.1", "Brotli==1.1.0", "colorama==0.4.6",
+]
+web = ["fastapi==0.143.1", "uvicorn==0.54.0", "httpx==0.28.1"]
+test = ["pytest==8.4.2"]
+
+[project.scripts]
+bili-danmaku-mapper = "bili_danmaku_mapper.cli:main"
+
+[tool.setuptools]
+packages = ["bili_danmaku_mapper", "bili_danmaku_mapper.workbench"]
+py-modules = ["bili_downloader", "mapper_frame"]
+
+[tool.setuptools.data-files]
+"share/bili-danmaku-mapper" = ["player.html", "player.js", "player.css", "player-session.js", "danmaku-renderer.js", "danmaku-renderer.css", "启动.command", "launcher.py"]
+"share/bili-danmaku-mapper/web" = ["web/index.html", "web/app.js", "web/style.css", "web/player-session.js", "web/watch.js", "web/segment-player.js", "web/watch.css", "web/subtitle-renderer.js"]
+"share/bili-danmaku-mapper/web/vendor/nplayer-1.0.15" = ["web/vendor/nplayer-1.0.15/index.min.js", "web/vendor/nplayer-1.0.15/LICENSE", "web/vendor/nplayer-1.0.15/provenance.json"]
+
+[tool.setuptools.package-data]
+"bili_danmaku_mapper.workbench" = ["native_picker.js", "native_danmaku.lua"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

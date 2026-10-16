@@ -1,0 +1,10 @@
+{
+  "name": "nplayer",
+  "version": "1.0.15",
+  "tarball": "https://registry.npmjs.org/nplayer/-/nplayer-1.0.15.tgz",
+  "integrity": "sha512-QONvD0+ZvorQNOghe55FY10ebNv6yDnr2QgHs8JdessOex+vVNSKZz88Rl9RBMflb4+MRpeMVJpkTpji0XzVCg==",
+  "license": "MIT",
+  "license_source": "https://raw.githubusercontent.com/oyuyue/nplayer/9b19d32336f4330a21c80486621423f521409b5c/LICENCE",
+  "repository": "https://github.com/oyuyue/nplayer",
+  "bundle_sha256": "6aa5bb0dc03703acd66627df427b83666d60ce3759860ffbbff863b49a5ab452"
+}

@@ -1,88 +1,40 @@
-<!DOCTYPE HTML>
-<html>
+<!doctype html>
+<html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="referrer" content="no-referrer">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>player</title>
-    <script src="https://cdn.jsdelivr.net/npm/nplayer@latest/dist/index.min.js"></script>
-    <script src="https://unpkg.com/@nplayer/danmaku@latest/dist/index.min.js"></script>
-    <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden; /* 防止页面滚动条 */
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background-color: black;
-            color: white;
-        }
-
-        #nplayer {
-            width: 75%;
-            height: 75%;
-            max-width: 100vw;
-            max-height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-    </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>弹幕映射复核</title>
+<link rel="stylesheet" href="player.css">
+<link rel="stylesheet" href="danmaku-renderer.css">
 </head>
 <body>
-<input type="file" id="videoInput" accept="video/*" />
-<input type="file" id="danmakuInput" accept=".json" />
-<div id="nplayer"></div>
-<script>
-    let videoFile = null;
-    let danmakuFile = null;
-
-    const videoInput = document.getElementById('videoInput');
-    const danmakuInput = document.getElementById('danmakuInput');
-
-    function tryInitPlayer() {
-        if (!videoFile || !danmakuFile) return;
-
-        // 读取弹幕JSON
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            try {
-                const json = JSON.parse(e.target.result);
-                const danmakuOptions = {
-                    items: json.data,
-                    speed: 0.5,
-                    fontsizeScale: 1.3
-                };
-                // 视频文件本地URL
-                const videoUrl = URL.createObjectURL(videoFile);
-                const player = new NPlayer.Player({
-                    src: videoUrl,
-                    plugins: [new NPlayerDanmaku(danmakuOptions)],
-                    seekStep: 4,
-                    volumeStep: 0.05
-                });
-                player.mount("#nplayer");
-                videoInput.style.display = 'none';
-                danmakuInput.style.display = 'none';
-            } catch (err) {
-                console.error('解析 JSON 出错:', err);
-            }
-        };
-        reader.readAsText(danmakuFile);
-    }
-
-    videoInput.addEventListener('change', function (event) {
-        videoFile = event.target.files[0];
-        tryInitPlayer();
-    });
-
-    danmakuInput.addEventListener('change', function (event) {
-        danmakuFile = event.target.files[0];
-        tryInitPlayer();
-    });
-</script>
+<header><h1>弹幕映射复核</h1><p>对照两个版本的剧情，检查时间映射，并导出人工锚点。所有文件都在浏览器本地读取。</p></header>
+<section class="files" aria-label="选择本地文件">
+<label>源视频（原弹幕版本）<input id="sourceInput" type="file" accept="video/*,.mkv"></label>
+<label>目标视频<input id="videoInput" type="file" accept="video/*,.mkv"></label>
+<label>映射后的弹幕 JSON<input id="danmakuInput" type="file" accept=".json"></label>
+<label>映射报告 / 对齐结果<input id="reportInput" type="file" accept=".json"></label>
+<label>原始弹幕 JSON（可选）<input id="originalInput" type="file" accept=".json"></label>
+<label>已有人工锚点（可选）<input id="anchorsInput" type="file" accept=".json"></label>
+</section>
+<p id="message" role="status">选择目标视频和弹幕即可播放；加入源视频和报告可复核映射。</p>
+<main>
+<section><h2>源视频 <output id="sourceTime">0.000 s</output></h2><video id="sourceVideo" controls preload="metadata"></video></section>
+<section><h2>目标视频 <output id="targetTime">0.000 s</output></h2><div class="target"><video id="targetVideo" controls preload="metadata"></video><div id="danmakuLayer" aria-hidden="true"></div></div></section>
+</main>
+<section class="toolbar">
+<label><input id="sync" type="checkbox">源视频控制同步播放</label>
+<label><input id="showEstimated" type="checkbox" checked>显示估算弹幕</label>
+<button id="jump" type="button">跳转到当前源时间的对应画面</button>
+<button id="addAnchor" type="button">记录当前两边时间为锚点</button>
+<button id="exportAnchors" type="button">导出锚点 JSON</button>
+</section>
+<div class="review">
+<section><h2>待复核弹幕</h2><p id="summary">尚未加载报告</p><div id="uncertain"></div></section>
+<section><h2>人工锚点</h2><p>关闭同步后分别定位两个视频。锚点必须按两边时间共同递增；不要用一个片段的锚点跨越删减边界。</p><ol id="anchors"></ol></section>
+</div>
+<footer>无法读取时请使用支持原片编码的浏览器；日常观影可在工作台尝试按需播放。命令行使用 <code>align --anchors 锚点.json</code> 重新计算。</footer>
+<script src="danmaku-renderer.js"></script>
+<script src="player.js"></script>
+<script src="player-session.js"></script>
 </body>
 </html>
