@@ -31,16 +31,17 @@ Currently supported danmaku mapping algorithms:
 
 - **System Requirements**: macOS / Linux / Windows
 - **Python Version**: 3.11+
-- **Dependency Management**: pipenv
+- **Dependency Management**: pip and requirements.txt
 
 **Install dependencies:**
 
 ```bash
-pip install pipenv
-pipenv install
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-Or use `requirements.txt` directly:
+To install dependencies into an existing environment:
 
 ```bash
 pip install -r requirements.txt
@@ -55,7 +56,6 @@ pip install -r requirements.txt
 ├── bili_downloader.py      # Batch download and convert Bilibili anime videos & danmaku
 ├── mapper_frame.py         # Core logic for frame-based danmaku migration
 ├── player.html             # Local HTML video danmaku player (supports JSON danmaku)
-├── Pipfile / Pipfile.lock  # pipenv environment config
 ├── requirements.txt        # Dependency list
 ├── README-zh.md / README.md
 ├── LICENSE
@@ -71,7 +71,7 @@ pip install -r requirements.txt
 Use `bili_downloader.py` to batch download anime videos and danmaku:
 
 ```bash
-pipenv run python bili_downloader.py
+python bili_downloader.py
 # Follow the prompt to log in and input the anime media_id, the script will auto-download all episodes and original danmaku as JSON
 ```
 

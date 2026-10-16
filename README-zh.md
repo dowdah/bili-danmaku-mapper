@@ -31,16 +31,17 @@
 
 - **系统要求**：macOS / Linux / Windows
 - **Python 版本**：3.11+
-- **依赖管理**：pipenv
+- **依赖管理**：pip 与 requirements.txt
 
 **安装依赖：**
 
 ```bash
-pip install pipenv
-pipenv install
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-或者直接用 requirements.txt：
+已有环境可直接使用 requirements.txt：
 
 ```bash
 pip install -r requirements.txt
@@ -55,7 +56,6 @@ pip install -r requirements.txt
 ├── bili_downloader.py      # B站番剧视频及弹幕批量下载与转换
 ├── mapper_frame.py         # 基于帧感知哈希的弹幕迁移核心逻辑
 ├── player.html             # 本地 HTML 视频弹幕播放器（支持 JSON 弹幕）
-├── Pipfile / Pipfile.lock  # pipenv 环境配置
 ├── requirements.txt        # 依赖列表
 ├── README-zh.md / README.md
 ├── LICENSE
@@ -71,7 +71,7 @@ pip install -r requirements.txt
 使用 `bili_downloader.py` 批量下载番剧视频和弹幕：
 
 ```bash
-pipenv run python bili_downloader.py
+python bili_downloader.py
 # 按照提示登录并输入番剧 media_id，程序自动下载所有剧集及原始弹幕为 JSON
 ```
 

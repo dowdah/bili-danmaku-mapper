@@ -129,6 +129,8 @@ celerybeat.pid
 
 # Environments
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/
@@ -248,3 +250,21 @@ fabric.properties
 # Other
 .DS_Store
 data/
+
+# Personal IDE configuration (keep local files, do not track them)
+/.idea/
+
+# Local login exports, including copies outside the normal data directory
+cookies.json
+cookies.txt
+
+# Optional user-provided FFmpeg binaries
+tools/ffmpeg/bin/
+
+# Isolated optimization snapshots and private local benchmark inputs
+/.optimization/
+
+# Raw local benchmark reports may contain private paths and per-position data.
+# Publish the corresponding acceptance Markdown summaries instead.
+/docs/coverage-metrics.json
+/docs/optimization-metrics.json
