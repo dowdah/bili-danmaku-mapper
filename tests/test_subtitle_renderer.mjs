@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+const handlers={};const video={currentTime:0,paused:true,ended:false,addEventListener(k,fn){handlers[k]=fn;}};
+const layer={textContent:'',hidden:true};
+const context=vm.createContext({requestAnimationFrame:()=>1,cancelAnimationFrame(){}});
+vm.runInContext(fs.readFileSync(new URL('../web/subtitle-renderer.js',import.meta.url),'utf8'),context);
+const R=vm.runInContext('SubtitleRenderer',context);const r=new R(video,layer);
+const cues=[{start:1,end:3,text:'first'},{start:2,end:4,text:'第二行'},{start:0,end:10,text:'long'}];
+r.setCues(cues);assert.equal(layer.textContent,'long');
+video.currentTime=2;handlers.seeking();assert.equal(layer.textContent,'long\nfirst\n第二行');
+r.configure({offset:5});assert.equal(layer.hidden,true,'positive offset delays');
+video.currentTime=6;handlers.seeked();assert.equal(layer.textContent,'long\nfirst');
+r.configure({offset:-5});assert.equal(layer.hidden,true);
+video.currentTime=0;r.configure({offset:-2});assert.equal(layer.textContent,'long\nfirst\n第二行','negative offset advances even at beginning');
+for(let i=0;i<50;i++){r.configure({offset:5});r.configure({offset:-5});}
+assert.equal(cues[0].start,1,'offset must not mutate cue timestamps');
+r.configure({offset:0.1});video.currentTime=1.1;handlers.pause();assert.equal(layer.textContent,'long\nfirst');
+video.currentTime=3.1;handlers.ratechange();assert.equal(layer.textContent,'long\n第二行','end time exclusive and playback-rate independent');
+r.configure({enabled:false});assert.equal(layer.hidden,true);
+r.configure({enabled:true,offset:99});assert.equal(r.offset,5);r.configure({offset:-99});assert.equal(r.offset,-5);
+r.setCues([]);assert.equal(layer.hidden,true);assert.equal(layer.textContent,'');
+const many=Array.from({length:100000},(_,i)=>({start:i,end:i+1,text:String(i)}));r.configure({offset:0});r.setCues(many);video.currentTime=99999.5;r.render();assert.equal(layer.textContent,'99999');
+console.log('Subtitles: paused adjustments, offset signs/bounds, overlap, seek/rate, no drift, clear and 100k cues passed');

@@ -1,0 +1,379 @@
+{
+  "schema_version": 1,
+  "generated_date": "2026-10-14",
+  "python": "3.11.13",
+  "platform": "macOS-27.0-arm64-arm-64bit",
+  "ffmpeg": "ffmpeg version 8.1.1 Copyright (c) 2000-2026 the FFmpeg developers",
+  "scope": "Short deterministic moving-texture videos; not real anime acceptance or a long-video performance claim",
+  "baseline": "Original AAP matching on full decoded frame hashes; PTS conversion and nonmonotonic filtering retained for safe comparison",
+  "metrics": [
+    {
+      "algorithm": "sequence",
+      "scenario": "identity",
+      "counts": {
+        "total": 76,
+        "reliable": 73,
+        "estimated": 0,
+        "unmapped": 3
+      },
+      "rates": {
+        "reliable": 0.9605263157894737,
+        "estimated": 0.0,
+        "unmapped": 0.039473684210526314
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0,
+      "max_error_seconds": 0.0,
+      "elapsed_seconds": 0.5371640417724848,
+      "peak_rss_bytes": 65437696,
+      "cache_bytes": 25192,
+      "segments": 1,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "identity",
+      "counts": {
+        "total": 76,
+        "reliable": 70,
+        "estimated": 0,
+        "unmapped": 6
+      },
+      "rates": {
+        "reliable": 0.9210526315789473,
+        "estimated": 0.0,
+        "unmapped": 0.07894736842105263
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.08666648950028248,
+      "max_error_seconds": 0.1266664000000004,
+      "elapsed_seconds": 0.46538520883768797,
+      "peak_rss_bytes": 66977792,
+      "cache_bytes": 300551,
+      "segments": 7,
+      "legacy_discarded_nonmonotonic": 58
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "head_cut",
+      "counts": {
+        "total": 69,
+        "reliable": 60,
+        "estimated": 0,
+        "unmapped": 9
+      },
+      "rates": {
+        "reliable": 0.8695652173913043,
+        "estimated": 0.0,
+        "unmapped": 0.13043478260869565
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 4.440892098500626e-16,
+      "max_error_seconds": 8.881784197001252e-16,
+      "elapsed_seconds": 0.460572374984622,
+      "peak_rss_bytes": 65847296,
+      "cache_bytes": 23941,
+      "segments": 1,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "head_cut",
+      "counts": {
+        "total": 69,
+        "reliable": 57,
+        "estimated": 0,
+        "unmapped": 12
+      },
+      "rates": {
+        "reliable": 0.8260869565217391,
+        "estimated": 0.0,
+        "unmapped": 0.17391304347826086
+      },
+      "precision_within_200ms": 0.8596491228070176,
+      "p95_error_seconds": 0.27931474510316734,
+      "max_error_seconds": 0.376000499199602,
+      "elapsed_seconds": 0.463596542365849,
+      "peak_rss_bytes": 67026944,
+      "cache_bytes": 288744,
+      "segments": 9,
+      "legacy_discarded_nonmonotonic": 45
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "middle_cut",
+      "counts": {
+        "total": 66,
+        "reliable": 58,
+        "estimated": 0,
+        "unmapped": 8
+      },
+      "rates": {
+        "reliable": 0.8787878787878788,
+        "estimated": 0.0,
+        "unmapped": 0.12121212121212122
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0,
+      "max_error_seconds": 0.0,
+      "elapsed_seconds": 0.4662000830285251,
+      "peak_rss_bytes": 65388544,
+      "cache_bytes": 23752,
+      "segments": 2,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "middle_cut",
+      "counts": {
+        "total": 66,
+        "reliable": 43,
+        "estimated": 0,
+        "unmapped": 23
+      },
+      "rates": {
+        "reliable": 0.6515151515151515,
+        "estimated": 0.0,
+        "unmapped": 0.3484848484848485
+      },
+      "precision_within_200ms": 0.9302325581395349,
+      "p95_error_seconds": 0.215333333333334,
+      "max_error_seconds": 0.31333333333333435,
+      "elapsed_seconds": 0.5154448337852955,
+      "peak_rss_bytes": 67289088,
+      "cache_bytes": 283981,
+      "segments": 6,
+      "legacy_discarded_nonmonotonic": 26
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "speed",
+      "counts": {
+        "total": 60,
+        "reliable": 58,
+        "estimated": 0,
+        "unmapped": 2
+      },
+      "rates": {
+        "reliable": 0.9666666666666667,
+        "estimated": 0.0,
+        "unmapped": 0.03333333333333333
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.008332999999999941,
+      "max_error_seconds": 0.008333000000000368,
+      "elapsed_seconds": 0.4421708327718079,
+      "peak_rss_bytes": 65699840,
+      "cache_bytes": 22800,
+      "segments": 1,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "speed",
+      "counts": {
+        "total": 60,
+        "reliable": 30,
+        "estimated": 0,
+        "unmapped": 30
+      },
+      "rates": {
+        "reliable": 0.5,
+        "estimated": 0.0,
+        "unmapped": 0.5
+      },
+      "precision_within_200ms": 0.9666666666666667,
+      "p95_error_seconds": 0.16783342000000057,
+      "max_error_seconds": 0.20000060000000097,
+      "elapsed_seconds": 0.4611688330769539,
+      "peak_rss_bytes": 66633728,
+      "cache_bytes": 274503,
+      "segments": 15,
+      "legacy_discarded_nonmonotonic": 20
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "overlay",
+      "counts": {
+        "total": 76,
+        "reliable": 73,
+        "estimated": 0,
+        "unmapped": 3
+      },
+      "rates": {
+        "reliable": 0.9605263157894737,
+        "estimated": 0.0,
+        "unmapped": 0.039473684210526314
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.019999799999999946,
+      "max_error_seconds": 0.033333,
+      "elapsed_seconds": 0.4665406667627394,
+      "peak_rss_bytes": 65650688,
+      "cache_bytes": 25176,
+      "segments": 1,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "overlay",
+      "counts": {
+        "total": 76,
+        "reliable": 62,
+        "estimated": 0,
+        "unmapped": 14
+      },
+      "rates": {
+        "reliable": 0.8157894736842105,
+        "estimated": 0.0,
+        "unmapped": 0.18421052631578946
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.10197770760815802,
+      "max_error_seconds": 0.13866615519864856,
+      "elapsed_seconds": 0.46395133389160037,
+      "peak_rss_bytes": 66764800,
+      "cache_bytes": 300394,
+      "segments": 26,
+      "legacy_discarded_nonmonotonic": 88
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "target_cut",
+      "counts": {
+        "total": 76,
+        "reliable": 58,
+        "estimated": 0,
+        "unmapped": 18
+      },
+      "rates": {
+        "reliable": 0.7631578947368421,
+        "estimated": 0.0,
+        "unmapped": 0.23684210526315788
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0,
+      "max_error_seconds": 0.0,
+      "elapsed_seconds": 0.4479217501357198,
+      "peak_rss_bytes": 66519040,
+      "cache_bytes": 23745,
+      "segments": 2,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "target_cut",
+      "counts": {
+        "total": 76,
+        "reliable": 59,
+        "estimated": 0,
+        "unmapped": 17
+      },
+      "rates": {
+        "reliable": 0.7763157894736842,
+        "estimated": 0.0,
+        "unmapped": 0.2236842105263158
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.10066664399990405,
+      "max_error_seconds": 0.1333334000000006,
+      "elapsed_seconds": 0.46298362500965595,
+      "peak_rss_bytes": 66945024,
+      "cache_bytes": 279885,
+      "segments": 8,
+      "legacy_discarded_nonmonotonic": 48
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "vfr",
+      "counts": {
+        "total": 76,
+        "reliable": 73,
+        "estimated": 0,
+        "unmapped": 3
+      },
+      "rates": {
+        "reliable": 0.9605263157894737,
+        "estimated": 0.0,
+        "unmapped": 0.039473684210526314
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0199997999999999,
+      "max_error_seconds": 0.033332999999999835,
+      "elapsed_seconds": 0.45276283333078027,
+      "peak_rss_bytes": 65617920,
+      "cache_bytes": 25189,
+      "segments": 1,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "vfr",
+      "counts": {
+        "total": 76,
+        "reliable": 70,
+        "estimated": 0,
+        "unmapped": 6
+      },
+      "rates": {
+        "reliable": 0.9210526315789473,
+        "estimated": 0.0,
+        "unmapped": 0.07894736842105263
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.02666663999856045,
+      "max_error_seconds": 0.03666705999988107,
+      "elapsed_seconds": 0.45570395793765783,
+      "peak_rss_bytes": 67436544,
+      "cache_bytes": 267936,
+      "segments": 9,
+      "legacy_discarded_nonmonotonic": 62
+    },
+    {
+      "algorithm": "sequence",
+      "scenario": "reencode",
+      "counts": {
+        "total": 76,
+        "reliable": 73,
+        "estimated": 0,
+        "unmapped": 3
+      },
+      "rates": {
+        "reliable": 0.9605263157894737,
+        "estimated": 0.0,
+        "unmapped": 0.039473684210526314
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.0199997999999999,
+      "max_error_seconds": 0.033332999999999835,
+      "elapsed_seconds": 0.4530040002427995,
+      "peak_rss_bytes": 65699840,
+      "cache_bytes": 25289,
+      "segments": 1,
+      "legacy_discarded_nonmonotonic": 0
+    },
+    {
+      "algorithm": "legacy",
+      "scenario": "reencode",
+      "counts": {
+        "total": 76,
+        "reliable": 69,
+        "estimated": 0,
+        "unmapped": 7
+      },
+      "rates": {
+        "reliable": 0.9078947368421053,
+        "estimated": 0.0,
+        "unmapped": 0.09210526315789473
+      },
+      "precision_within_200ms": 1.0,
+      "p95_error_seconds": 0.11866654399961625,
+      "max_error_seconds": 0.16666700000000123,
+      "elapsed_seconds": 0.4723607078194618,
+      "peak_rss_bytes": 66682880,
+      "cache_bytes": 302221,
+      "segments": 8,
+      "legacy_discarded_nonmonotonic": 58
+    }
+  ]
+}

@@ -15,205 +15,222 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
+import asyncio
+import getpass
 import json
 import os
-import time
+from pathlib import Path
+import subprocess
+import tempfile
+
 import xmltodict
-import asyncio
 from tqdm import tqdm
-from bilibili_api import Geetest, GeetestType, login_v2, sync, Credential, bangumi, HEADERS, get_client, video
+from bilibili_api import Geetest, GeetestType, login_v2, Credential, bangumi, HEADERS, get_client, video
 
+from bili_danmaku_mapper.config import ROOT, AlignConfig, settings
+from bili_danmaku_mapper.io import atomic_json
+from bili_danmaku_mapper.media import probe_video
 
-BASE_DIR = os.environ.get("BASE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
-FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
+_ENV = settings()
+BASE_DIR = _ENV.get("BASE_DIR", str(ROOT / "data"))
+FFMPEG_PATH = _ENV.get("FFMPEG_PATH", "ffmpeg")
+FFPROBE_PATH = _ENV.get("FFPROBE_PATH", "ffprobe")
 cookies_path = os.path.join(BASE_DIR, "cookies.json")
 
 
+async def _geetest(kind=None):
+    gee = Geetest()
+    if kind is None:
+        await gee.generate_test()
+    else:
+        await gee.generate_test(type_=kind)
+    gee.start_geetest_server()
+    try:
+        print("请在浏览器中手动完成验证：", gee.get_geetest_server_url())
+        while not gee.has_done():
+            await asyncio.sleep(.1)
+    finally:
+        gee.close_geetest_server()
+    return gee
+
+
 async def login() -> Credential:
-    choice = input("pwd(p) / sms(s) / qr code(q):")
-    if not choice in ["p", "s", "q"]:
-        raise ValueError("Invalid choice")
-
-    if choice in ["p", "s"]:
-        gee = Geetest()                                                         # 实例化极验测试类
-        await gee.generate_test()                                               # 生成测试
-        gee.start_geetest_server()                                              # 在本地部署网页端测试服务
-        print(gee.get_geetest_server_url())                                     # 获取本地服务链接
-        while not gee.has_done():                                               # 如果测试未完成
-            await asyncio.sleep(0.1)                                           # 就等待并释放控制
-        gee.close_geetest_server()                                              # 关闭部署的网页端测试服务
-        print("result:", gee.get_result())
-
-        # 1. 密码登录
-        if choice == "p":
-            username = input("username:")                                       # 手机号/邮箱
-            password = input("password:")                                       # 密码
-            cred = await login_v2.login_with_password(
-                username=username, password=password, geetest=gee               # 调用接口登陆
-            )
-
-        # 2. 验证码登录
-        if choice == "s":
-            phone = login_v2.PhoneNumber(input("phone:"), "+86")                # 实例化手机号类
-            captcha_id = await login_v2.send_sms(phonenumber=phone, geetest=gee)# 发送验证码
-            print("captcha_id:", captcha_id)                                    # 顺便获得对应的 captcha_id
-            code = input("code: ")
-            cred = await login_v2.login_with_sms(
-                phonenumber=phone, code=code, captcha_id=captcha_id             # 调用接口登陆
-            )
-
-    # 3. 扫码登录
-    if choice == "q":
-        qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)  # 生成二维码登录实例，平台选择网页端
-        await qr.generate_qrcode()  # 生成二维码
-        print(qr.get_qrcode_terminal())  # 生成终端二维码文本，打印
-        while not qr.has_done():  # 在完成扫描前轮询
-            print(await qr.check_state())  # 检查状态
-            await asyncio.sleep(1)  # 轮训间隔建议 >=1s
+    choice = input("pwd(p) / sms(s) / qr code(q):").strip()
+    if choice not in ("p", "s", "q"):
+        raise ValueError("Invalid login choice")
+    if choice == "p":
+        gee = await _geetest()
+        cred = await login_v2.login_with_password(username=input("username:"),
+                  password=getpass.getpass("password:"), geetest=gee)
+    elif choice == "s":
+        gee = await _geetest()
+        phone = login_v2.PhoneNumber(input("phone:"), "+86")
+        captcha_id = await login_v2.send_sms(phonenumber=phone, geetest=gee)
+        cred = await login_v2.login_with_sms(phonenumber=phone, code=input("code:"), captcha_id=captcha_id)
+    else:
+        qr = login_v2.QrCodeLogin(platform=login_v2.QrCodeLoginChannel.WEB)
+        await qr.generate_qrcode()
+        print(qr.get_qrcode_terminal())
+        while not qr.has_done():
+            await qr.check_state()
+            await asyncio.sleep(1)
         cred = qr.get_credential()
-
-    # 安全验证
     if isinstance(cred, login_v2.LoginCheck):
-        # 如法炮制 Geetest
-        gee = Geetest()                                                     # 实例化极验测试类
-        await gee.generate_test(type_=GeetestType.VERIFY)                   # 生成测试 (注意 type_ 为 GeetestType.VERIFY)
-        gee.start_geetest_server()                                          # 在本地部署网页端测试服务
-        print(gee.get_geetest_server_url())                                 # 获取本地服务链接
-        while not gee.has_done():                                           # 如果测试未完成
-            await asyncio.sleep(0.1)                                        # 就等待并释放控制
-        gee.close_geetest_server()                                          # 关闭部署的网页端测试服务
-        print("result:", gee.get_result())
-        await cred.send_sms(gee)                                            # 发送验证码
-        code = input("code:")
-        cred = await cred.complete_check(code)                              # 调用接口登陆
-
+        gee = await _geetest(GeetestType.VERIFY)
+        await cred.send_sms(gee)
+        cred = await cred.complete_check(input("code:"))
     return cred
 
 
 def xml_2_json(xml_str: str) -> tuple[dict, int]:
-    """
-    将B站的XML弹幕数据转换为JSON格式，供NPlayer使用。
-    :param xml_str: B站的XML弹幕数据字符串
-    :return: tuple (json_out, len_danmu)
-    """
-    parsed_data = xmltodict.parse(xml_str)
-    json_conversion = parsed_data['i']['d']
-    json_out = {'code': 1, 'data': []}
-    for danmu in json_conversion:
-        list_param = danmu['@p'].split(',')
-        hex_color = hex(int(list_param[3]))[2:]
-        hex_color = '#' + '0' * (6 - len(hex_color)) + hex_color
-        one_danmaku = {"author": list_param[6], "time": float(list_param[0]), "text": danmu['#text'],
-                       "color": hex_color, "type": "scroll"}
-        if list_param[1] == '4':
-            one_danmaku['type'] = "bottom"
-        if list_param[1] == '5':
-            one_danmaku['type'] = "top"
-        json_out['data'].append(one_danmaku)
-    json_out['data'] = sorted(json_out['data'], key=lambda x: x['time'])
-    return json_out, len(json_conversion)
+    parsed = xmltodict.parse(xml_str)
+    root = parsed.get("i") or {}
+    entries = root.get("d", [])
+    if isinstance(entries, dict):
+        entries = [entries]
+    if entries is None:
+        entries = []
+    output = {"code": 1, "data": []}
+    for entry in entries:
+        values = entry["@p"].split(",")
+        if len(values) < 7:
+            raise ValueError("Malformed danmaku parameters")
+        timestamp = float(values[0])
+        import math
+        if not math.isfinite(timestamp) or timestamp < 0:
+            raise ValueError("Invalid danmaku timestamp")
+        output["data"].append({"author": values[6], "time": timestamp, "text": entry.get("#text", ""),
+                               "color": f"#{int(values[3]):06x}",
+                               "type": {"4": "bottom", "5": "top"}.get(values[1], "scroll")})
+    output["data"].sort(key=lambda item: item["time"])
+    return output, len(output["data"])
 
 
-async def download(url: str, out: str, intro: str, retries: int = 3) -> None:
+async def download(url: str, out: str, intro: str, retries: int = 3, overwrite=False) -> None:
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"Output exists: {path}")
     for attempt in range(retries):
+        fd, temporary = tempfile.mkstemp(prefix=".download-", dir=path.parent)
         try:
-            dwn_id = await get_client().download_create(url, HEADERS)
-            tot = get_client().download_content_length(dwn_id)
-            bts = 0
-            with open(out, "wb") as file, tqdm(total=tot, unit="B", unit_scale=True, desc=f"{intro} - {os.path.basename(out)}") as pbar:
+            client = get_client()
+            download_id = await client.download_create(url, dict(HEADERS))
+            total = max(0, client.download_content_length(download_id) or 0)
+            written = 0
+            with os.fdopen(fd, "wb") as file, tqdm(total=total or None, unit="B", unit_scale=True, desc=intro) as bar:
+                fd = None
                 while True:
-                    chunk = await get_client().download_chunk(dwn_id)
+                    try:
+                        chunk = await client.download_chunk(download_id)
+                    except StopAsyncIteration:
+                        break
                     if not chunk:
                         break
-                    bts += file.write(chunk)
-                    pbar.update(len(chunk))
-                    if bts >= tot:
+                    written += file.write(chunk)
+                    bar.update(len(chunk))
+                    if total and written >= total:
                         break
+                if total and written != total:
+                    raise IOError("Incomplete download")
+                if not written:
+                    raise IOError("Empty download")
+                file.flush()
+                os.fsync(file.fileno())
+            if overwrite:
+                os.replace(temporary, path)
+            else:
+                os.link(temporary, path)
             return
-        except Exception as e:
-            print(f"下载失败（第 {attempt + 1} 次尝试）: {e}")
-            if attempt == retries - 1:
-                raise
-            await asyncio.sleep(1)  # 简单退避
+        except Exception:
+            # Signed stream URLs and account/session data must not appear in logs.
+            print(f"下载失败（第 {attempt + 1} 次）")
+            if attempt + 1 == retries:
+                raise RuntimeError("Download failed after retries") from None
+            await asyncio.sleep(1)
+        finally:
+            if fd is not None:
+                os.close(fd)
+            Path(temporary).unlink(missing_ok=True)
 
 
-async def download_bangumi(media_id: int, cred: Credential) -> None:
-    output_dir = os.path.join(BASE_DIR, "bangumi", str(media_id))
-    os.makedirs(output_dir, exist_ok=True)
-    # 实例化 Bangumi 类
-    b = bangumi.Bangumi(media_id=media_id, credential=cred)
-    # 获取所有剧集
-    for idx, ep in enumerate(await b.get_episodes()):
-        await download_episode(ep, os.path.join(output_dir, f"{idx}.mp4"))
-        await download_ep_danmaku(ep, os.path.join(output_dir, f"dms_raw_{idx}.json"))
+async def download_episode(ep: bangumi.Episode, out: str, overwrite=False) -> None:
+    path = Path(out)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists() and not overwrite:
+        raise FileExistsError(f"Output exists: {path}")
+    detecter = video.VideoDownloadURLDataDetecter(await ep.get_download_url())
+    streams = detecter.detect_best_streams(video_max_quality=video.VideoQuality._8K,
+                  audio_max_quality=video.AudioQuality._192K, no_dolby_audio=False,
+                  no_dolby_video=False, no_hdr=False, no_hires=False)
+    with tempfile.TemporaryDirectory(prefix=".episode-", dir=path.parent) as directory:
+        directory = Path(directory)
+        merged = directory / "merged.mp4"
+        if detecter.check_video_and_audio_stream():
+            v, a = directory / "video.mp4", directory / "audio.mp4"
+            await download(streams[0].url, str(v), "视频流")
+            await download(streams[1].url, str(a), "音频流")
+            args = ["-i", str(v), "-i", str(a), "-map", "0:v:0", "-map", "1:a:0", "-c", "copy"]
+        else:
+            stream = directory / "stream.flv"
+            await download(streams[0].url, str(stream), "音视频流")
+            args = ["-i", str(stream), "-c", "copy"]
+        subprocess.run([FFMPEG_PATH, "-hide_banner", "-nostdin", "-loglevel", "error", *args, str(merged)], check=True)
+        probe_video(merged, AlignConfig(ffmpeg=FFMPEG_PATH, ffprobe=FFPROBE_PATH))
+        if overwrite:
+            os.replace(merged, path)
+        else:
+            os.link(merged, path)
+    print(f"已下载为：{path}")
 
 
-async def download_episode(ep: bangumi.Episode, out: str) -> None:
-    print(f"########## {await ep.get_bvid()} ##########")
-    # 获取视频下载链接
-    download_url_data = await ep.get_download_url()
-    # 解析视频下载信息
-    detecter = video.VideoDownloadURLDataDetecter(data=download_url_data)
-    streams = detecter.detect_best_streams(
-        video_max_quality=video.VideoQuality._8K,
-        audio_max_quality=video.AudioQuality._192K,
-        no_dolby_audio=False,
-        no_dolby_video=False,
-        no_hdr=False,
-        no_hires=False
-    )
-    # 有 MP4 流 / FLV 流两种可能
-    if detecter.check_video_and_audio_stream():
-        # MP4 流下载
-        video_temp_path = os.path.join(BASE_DIR, 'video_temp.mp4')
-        audio_temp_path = os.path.join(BASE_DIR, 'audio_temp.mp4')
-        await download(streams[0].url, video_temp_path, "视频流")
-        await download(streams[1].url, audio_temp_path, "音频流")
-        # 混流
-        os.system(
-            f"{FFMPEG_PATH} -i {video_temp_path} -i {audio_temp_path} -vcodec copy -acodec copy {out}"
-        )
-        # 删除临时文件
-        os.remove(video_temp_path)
-        os.remove(audio_temp_path)
-    else:
-        # FLV 流下载
-        flv_temp_path = os.path.join(BASE_DIR, 'flv_temp.mp4')
-        await download(streams[0].url, flv_temp_path, "FLV 音视频流")
-        # 转换文件格式
-        os.system(f"{FFMPEG_PATH} -i {flv_temp_path} {out}")
-        # 删除临时文件
-        os.remove(flv_temp_path)
-
-    print(f"已下载为：{out}")
+async def download_ep_danmaku(ep: bangumi.Episode, out: str, overwrite=False) -> None:
+    data, count = xml_2_json(await ep.get_danmaku_xml())
+    atomic_json(out, data, overwrite=overwrite)
+    print(f"已下载弹幕：{out}，共 {count} 条")
 
 
-async def download_ep_danmaku(ep: bangumi.Episode, out: str) -> None:
-    """
-    下载番剧的弹幕
-    :param ep: 番剧剧集对象
-    :param out: 输出文件路径
-    """
-    dms = await ep.get_danmaku_xml()
-    dms_json, len_danmu = xml_2_json(dms)
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(dms_json, f, ensure_ascii=False, indent=4)
-    print(f"已下载弹幕：{out}，共 {len_danmu} 条")
+async def download_bangumi(media_id: int, cred: Credential, overwrite=False) -> None:
+    output = Path(BASE_DIR) / "bangumi" / str(media_id)
+    output.mkdir(parents=True, exist_ok=True)
+    series = bangumi.Bangumi(media_id=media_id, credential=cred)
+    for index, episode in enumerate(await series.get_episodes()):
+        path = output / f"{index}.mp4"
+        comments = output / f"dms_raw_{index}.json"
+        if not overwrite and (path.exists() or comments.exists()):
+            raise FileExistsError(f"Episode {index} already has output; use --overwrite")
+        await download_episode(episode, str(path), overwrite)
+        await download_ep_danmaku(episode, str(comments), overwrite)
+
+
+async def _run(media_id, overwrite):
+    Path(BASE_DIR).mkdir(parents=True, exist_ok=True)
+    cred = None
+    if Path(cookies_path).exists():
+        with open(cookies_path, encoding="utf-8") as file:
+            cookies = json.load(file)
+        cred = Credential(sessdata=cookies.get("SESSDATA"), bili_jct=cookies.get("bili_jct"),
+                          ac_time_value=cookies.get("ac_time_value"),
+                          buvid3=cookies.get("buvid3"), buvid4=cookies.get("buvid4"), dedeuserid=cookies.get("DedeUserID"))
+    if cred is None or not await cred.check_valid():
+        cred = await login()
+    elif await cred.check_refresh():
+        await cred.refresh()
+    atomic_json(cookies_path, cred.get_cookies(), overwrite=True, private=True)
+    await download_bangumi(media_id, cred, overwrite)
+
+
+def run_download(media_id, base_dir=None, ffmpeg=None, ffprobe=None, overwrite=False):
+    global BASE_DIR, FFMPEG_PATH, FFPROBE_PATH, cookies_path
+    if int(media_id) <= 0:
+        raise ValueError("media_id must be positive")
+    env = settings()
+    BASE_DIR = str(base_dir or env.get("BASE_DIR", ROOT / "data"))
+    FFMPEG_PATH = ffmpeg or env.get("FFMPEG_PATH", "ffmpeg")
+    FFPROBE_PATH = ffprobe or env.get("FFPROBE_PATH", "ffprobe")
+    cookies_path = str(Path(BASE_DIR) / "cookies.json")
+    asyncio.run(_run(int(media_id), overwrite))
 
 
 if __name__ == "__main__":
-    if os.path.exists(cookies_path):
-        with open(cookies_path, "r", encoding="utf-8") as f:
-            cookies_dict = json.load(f)
-        cred = Credential(sessdata=cookies_dict["SESSDATA"], bili_jct=cookies_dict["bili_jct"],
-                          ac_time_value=cookies_dict["ac_time_value"])
-    else:
-        cookies_dict = {}
-    if cookies_dict and sync(cred.check_valid()):
-        if sync(cred.check_refresh()):
-            sync(cred.refresh())
-    else:
-        cred = sync(login())
-        with open(cookies_path, "w", encoding="utf-8") as f:
-            json.dump(cred.get_cookies(), f, ensure_ascii=False, indent=4)
-    asyncio.run(download_bangumi(int(input("输入番剧media_id:")), cred))  # 替换为实际的番剧ID
+    run_download(int(input("输入番剧media_id:")))

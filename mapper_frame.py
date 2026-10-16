@@ -23,24 +23,29 @@ import imagehash
 import subprocess
 import bisect
 import re
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from dataclasses import dataclass
+from pathlib import Path
+import tempfile
+from bili_danmaku_mapper.config import settings
+from bili_danmaku_mapper.io import atomic_json
 
 
-BASE_DIR = os.environ.get("BASE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
-FFMPEG_PATH = os.environ.get("FFMPEG_PATH", "ffmpeg")
-FFPROBE_PATH = os.environ.get("FFPROBE_PATH", "ffprobe")
+_ENV = settings()
+BASE_DIR = _ENV.get("BASE_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'))
+FFMPEG_PATH = _ENV.get("FFMPEG_PATH", "ffmpeg")
+FFPROBE_PATH = _ENV.get("FFPROBE_PATH", "ffprobe")
 # 视频的纵向裁剪比例，0.6表示仅保留中间60%。可以根据视频字幕、水印等情况调整。
-CROP_RATIO = float(os.environ.get("CROP_RATIO", 0.6))
+CROP_RATIO = float(_ENV.get("CROP_RATIO", 0.6))
 # 视频帧的宽度和高度，默认为256x256。可以根据需要调整。
-WIDTH, HEIGHT = int(os.environ.get("WIDTH", 256)), int(os.environ.get("HEIGHT", 256))
+WIDTH, HEIGHT = int(_ENV.get("WIDTH", 256)), int(_ENV.get("HEIGHT", 256))
 # 锚点间隔帧数
-ANCHOR_INTERVAL = int(os.environ.get("ANCHOR_INTERVAL", 50))
+ANCHOR_INTERVAL = int(_ENV.get("ANCHOR_INTERVAL", 50))
 # 搜索范围系数(占被搜索视频帧数的比例)。若视频间最大帧数差异较大，可适当增大。
-RANGE_FACTOR = float(os.environ.get("RANGE_FACTOR", 0.2))
+RANGE_FACTOR = float(_ENV.get("RANGE_FACTOR", 0.2))
 # 最大允许的汉明距离，判断是否匹配成功。该参数越大，匹配越宽松，但可能导致错误匹配。
-MAX_HAMMING_DISTANCE = int(os.environ.get("MAX_HAMMING_DISTANCE", 10))
+MAX_HAMMING_DISTANCE = int(_ENV.get("MAX_HAMMING_DISTANCE", 10))
 
 
 @dataclass
@@ -137,30 +142,44 @@ def export_frames_ffmpeg(video_path: str, output_dir: str, config: FrameExportCo
     :param config: FrameExportConfig，导出配置，包括裁剪比例、宽度和高度
     :return: None
     """
+    from bili_danmaku_mapper.config import AlignConfig
+    from bili_danmaku_mapper.media import probe_video, content_digest
     config = config or FrameExportConfig()
-    crop_ratio = config.crop_ratio
-    width = config.width
-    height = config.height
-    os.makedirs(output_dir, exist_ok=True)
-    crop_start = (1 - crop_ratio) / 2
-    crop_expr = f"in_w:in_h*{crop_ratio}:0:in_h*{crop_start}"
-    out_pattern = os.path.join(output_dir, "%05d.jpg")
-    cmd = [
-        FFMPEG_PATH,
-        "-hide_banner",
-        "-loglevel", "error",
-        "-hwaccel", "videotoolbox",
-        "-i", video_path,
-        "-vf", f"crop={crop_expr},scale={width}:{height}",
-        "-qscale:v", "3",
-        out_pattern
-    ]
-    print(f"运行命令：{' '.join(cmd)}")
-    try:
-        subprocess.run(cmd, check=True)
-        print(f"帧已导出到 {output_dir}")
-    except subprocess.CalledProcessError as e:
-        print(f"导出失败: {video_path}\n错误: {e}")
+    if not 0 < config.crop_ratio <= 1 or config.width <= 0 or config.height <= 0:
+        raise ValueError("Invalid frame export dimensions or crop ratio")
+    destination = Path(output_dir)
+    if destination.exists() and any(destination.iterdir()):
+        raise FileExistsError(f"Frame directory is not empty: {destination}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    info = probe_video(video_path, AlignConfig(ffmpeg=FFMPEG_PATH, ffprobe=FFPROBE_PATH))
+    with tempfile.TemporaryDirectory(prefix=".frames-", dir=destination.parent) as tmp:
+        crop = f"crop=in_w:in_h*{config.crop_ratio}:0:in_h*{(1-config.crop_ratio)/2}"
+        command = [FFMPEG_PATH, "-hide_banner", "-nostdin", "-copyts", "-i", str(video_path),
+                   "-map", "0:v:0", "-an", "-vf", f"{crop},scale={config.width}:{config.height},showinfo",
+                   "-fps_mode", "passthrough", "-qscale:v", "3", str(Path(tmp) / "%08d.jpg")]
+        log = Path(tmp) / "decode.log"
+        with log.open("wb") as stderr:
+            subprocess.run(command, stdout=subprocess.DEVNULL, stderr=stderr, check=True)
+        times = []
+        pattern = re.compile(r"\bn:\s*(\d+).*?\bpts_time:([^\s]+)")
+        with log.open(encoding="utf-8") as f:
+            for line in f:
+                match = pattern.search(line)
+                if match:
+                    if int(match[1]) != len(times):
+                        raise ValueError("Frame metadata order mismatch")
+                    times.append(float(match[2]) - info.origin)
+        log.unlink()
+        if not times or len(list(Path(tmp).glob("*.jpg"))) != len(times):
+            raise ValueError("Incomplete frame export")
+        atomic_json(Path(tmp) / "frames.manifest.json", {
+            "schema_version": 1, "video_sha256": content_digest(video_path), "times": times,
+            "frame_count": len(times), "crop_ratio": config.crop_ratio,
+            "width": config.width, "height": config.height,
+        })
+        if destination.exists():
+            destination.rmdir()
+        os.rename(tmp, destination)
 
 
 def load_frame_paths(frame_dir: str) -> list[str]:
@@ -171,7 +190,10 @@ def load_frame_paths(frame_dir: str) -> list[str]:
     """
     files = os.listdir(frame_dir)
     files = [f for f in files if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
-    files.sort()
+    files.sort(key=lambda name: int(Path(name).stem))
+    numbers = [int(Path(name).stem) for name in files]
+    if numbers and numbers != list(range(numbers[0], numbers[0] + len(numbers))):
+        raise ValueError("Incomplete frame directory")
     return [os.path.join(frame_dir, f) for f in files]
 
 
@@ -318,8 +340,7 @@ def save_mapping_csv(out_path: str, b2a_map: dict) -> None:
     with open(out_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["frame_b_index", "frame_a_index"])
-        for b_idx in range(len(b2a_map)):
-            a_idx = b2a_map.get(b_idx)
+        for b_idx, a_idx in sorted(((int(k), v) for k, v in b2a_map.items())):
             if a_idx is None:
                 writer.writerow([b_idx, "None"])
             else:
@@ -358,8 +379,7 @@ def load_json(filename: str) -> dict:
 
 
 def save_json(filename: str, data: dict | list) -> None:
-    with open(filename, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    atomic_json(filename, data)
 
 
 def find_nearest_key(keys: list[int], target: int) -> int:
@@ -370,6 +390,8 @@ def find_nearest_key(keys: list[int], target: int) -> int:
     :param target: int，目标值
     :return: int，最接近target的key
     """
+    if not keys:
+        raise ValueError("No mapped keys")
     idx = bisect.bisect_left(keys, target)
     if idx == 0:
         return keys[0]
@@ -387,8 +409,8 @@ def map_danmaku_json(danmaku_json: dict, b2a_map: dict, video_path_a: str, video
     """
     将弹幕时间从B视频映射到A视频时间轴。
 
-    遍历弹幕JSON中的每条弹幕，根据B视频时间计算对应的B帧号，查找最近有映射的B帧，
-    然后通过b2a_map找到对应的A帧号，并根据A视频帧率换算为A视频时间，替换弹幕的'time'字段。
+    仅用于旧恒定帧率映射：按原帧号直接查找，不吸附到其他帧，忽略无效或非递增映射。
+    可变帧率视频应使用 bili_danmaku_mapper.align_videos / map_danmaku。
 
     :param danmaku_json: dict，包含弹幕数据的JSON对象，需有'data'键，值为弹幕列表
     :param b2a_map: dict，B帧号到A帧号的映射（key为B帧号str/int，value为A帧号或None）
@@ -396,20 +418,26 @@ def map_danmaku_json(danmaku_json: dict, b2a_map: dict, video_path_a: str, video
     :param video_path_b: str，B视频文件路径
     :return: dict，时间已映射到A视频的弹幕JSON对象
     """
-    fps_a = get_video_fps(video_path_a)
-    fps_b = get_video_fps(video_path_b)
-    b_keys = sorted(int(k) for k in b2a_map.keys() if b2a_map[k] is not None)
-    for item in danmaku_json['data']:
-        time_b = item['time']       # B视频时间（秒）
-        b_frame = int(round(time_b * fps_b))
-        # 找最近有映射的b帧
-        nearest_b = find_nearest_key(b_keys, b_frame)
-        a_frame = b2a_map[nearest_b]
-        # A视频帧号换算为时间
-        time_a = int(a_frame) / fps_a
-        item['time'] = time_a
-    danmaku_json['data'] = sorted(danmaku_json['data'], key=lambda x: x['time'])
-    return danmaku_json
+    # Compatibility for legacy frame maps: normalize JSON keys and never absorb gaps.
+    import copy
+    mapping = {int(k): (None if v is None else int(v)) for k, v in b2a_map.items()}
+    fps_a, fps_b = get_video_fps(video_path_a), get_video_fps(video_path_b)
+    if fps_a <= 0 or fps_b <= 0:
+        raise ValueError("Positive frame rates required for a legacy frame map")
+    result = copy.deepcopy(danmaku_json)
+    result["data"] = []
+    previous = -1
+    monotonic = {}
+    for k, v in sorted(mapping.items()):
+        if v is not None and v > previous:
+            monotonic[k] = v
+            previous = v
+    for item in danmaku_json["data"]:
+        key = int(round(float(item["time"]) * fps_b))
+        if key in monotonic:
+            result["data"].append({**item, "time": monotonic[key] / fps_a})
+    result["data"].sort(key=lambda item: item["time"])
+    return result
 
 
 def videos_2_frames(videos_dir: str, max_workers: int = 4, delete_video: bool = False,
@@ -423,21 +451,15 @@ def videos_2_frames(videos_dir: str, max_workers: int = 4, delete_video: bool = 
     :param template_str: str，正则表达式模板，用于提取视频文件名中的序号部分
     :return: None
     """
+    if delete_video:
+        raise ValueError("Automatic source video deletion is disabled; archive sources separately")
     config = config or FrameExportConfig()
-    videos_dict = loading_videos_from_dir(videos_dir, template_str)
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        futures = []
-        for video_no, video_file in videos_dict.items():
-            frame_dir = os.path.join(videos_dir, str(video_no))
-            os.makedirs(frame_dir, exist_ok=True)
-            futures.append(pool.submit(export_frames_ffmpeg, video_file.path, frame_dir, config))
+    videos = loading_videos_from_dir(videos_dir, template_str)
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        futures = [pool.submit(export_frames_ffmpeg, file.path, os.path.join(videos_dir, str(no)), config)
+                   for no, file in videos.items()]
         for future in tqdm(futures, desc="导出帧"):
             future.result()
-    if delete_video:
-        for video_file in videos_dict.values():
-            os.remove(video_file.path)
-        else:
-            print(f"已删除该文件夹下的视频文件:\n{videos_dir}")
 
 
 def calc_b2a_map_with_frames(frames_a_dir: str, frames_b_dir: str, config: AAPConfig | None = None,
@@ -475,8 +497,8 @@ def map_danmaku_main(video_path_a: str, video_path_b: str, raw_dms_path: str, ex
                      frames_a_dir: str | None = None, frames_b_dir: str | None = None,
                      f_config: FrameExportConfig | None = None, aap_config: AAPConfig | None = None) -> None:
     """
-    根据两个视频文件路径，导出视频帧并计算B视频帧到A视频帧的映射关系，然后将弹幕时间从B视频映射到A视频。
-    如果提供了帧目录，则直接使用这些目录中的帧。
+    兼容旧调用签名，使用新版 PTS 序列算法将 B 弹幕映射到 A。
+    旧帧目录不用于新版算法；兼容裁剪比例和哈希距离，其余新版参数请使用 AlignConfig / CLI。
     :param video_path_a: str，A视频文件路径
     :param video_path_b: str，B视频文件路径
     :param frames_a_dir: str，可选，A视频帧目录
@@ -487,46 +509,19 @@ def map_danmaku_main(video_path_a: str, video_path_b: str, raw_dms_path: str, ex
     :param aap_config: AAPConfig，自适应锚点推进配置，包括锚点间隔、搜索范围系数、最大汉明距离和是否填充None等参数
     :return: None
     """
-    aap_config = aap_config or AAPConfig()
-    temp_dir = os.path.join(BASE_DIR, "tmp")
-    f_config = f_config or FrameExportConfig()
-    # 如果没有提供帧目录，则创建临时目录导出帧
-    def prepare_and_export(video_path, frames_dir):
-        if os.path.exists(frames_dir):
-            for filename in os.listdir(frames_dir):
-                file_path = os.path.join(frames_dir, filename)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-        else:
-            os.makedirs(frames_dir)
-        export_frames_ffmpeg(video_path, frames_dir, f_config)
-    if frames_a_dir is None and frames_b_dir is None:
-        frames_a_dir = os.path.join(temp_dir, "frames_a")
-        frames_b_dir = os.path.join(temp_dir, "frames_b")
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            futures = [
-                pool.submit(prepare_and_export, video_path_a, frames_a_dir),
-                pool.submit(prepare_and_export, video_path_b, frames_b_dir)
-            ]
-            for future in tqdm(futures, desc="导出视频帧"):
-                future.result()
-    elif frames_a_dir is None:
-        frames_a_dir = os.path.join(temp_dir, "frames_a")
-        prepare_and_export(video_path_a, frames_a_dir)
-    elif frames_b_dir is None:
-        frames_b_dir = os.path.join(temp_dir, "frames_b")
-        prepare_and_export(video_path_b, frames_b_dir)
-    b2a_map = calc_b2a_map_with_frames(frames_a_dir, frames_b_dir, aap_config)
-    danmaku = load_json(raw_dms_path)
-    danmaku_mapped = map_danmaku_json(danmaku, b2a_map, video_path_a, video_path_b)
-    save_json(export_dms_path, danmaku_mapped)
+    from bili_danmaku_mapper import AlignConfig
+    from bili_danmaku_mapper.cli import run_pair
+    # Old frame directories are deliberately not trusted for timestamps.
+    config = AlignConfig.resolve(crop_ratio=f_config.crop_ratio if f_config else None,
+                                 max_hash_distance=aap_config.max_hamming_distance if aap_config else None)
+    return run_pair(video_path_b, video_path_a, raw_dms_path, export_dms_path, config, "strict", False)
 
 
 def map_bili_danmaku_with_frames(media_id: int, videos_a_name: str, template_str: str = r"(?P<no>\d+)$",
                                  index_start: int = 0, index_end: int | None = None, offset: int = 0,
                                  max_workers: int = 4, config: AAPConfig | None = None) -> None:
     """
-    针对B站番剧的弹幕映射，使用自适应锚点推进算法。
+    兼容旧调用签名，按实际集数批量使用新版 PTS 序列算法，无需事先抽帧。
 
     :param media_id: int，B站番剧ID
     :param videos_a_name: str，A视频目录名
@@ -537,36 +532,19 @@ def map_bili_danmaku_with_frames(media_id: int, videos_a_name: str, template_str
     :param config: AAPConfig，自适应锚点推进配置
     :return: None
     """
-    config = config or AAPConfig()
-    frames_b_parent_dir = os.path.join(BASE_DIR, "bangumi", str(media_id))
-    videos_dict_b = loading_videos_from_dir(frames_b_parent_dir)
-    frames_a_parent_dir = os.path.join(BASE_DIR, "bangumi", videos_a_name)
-    videos_dict_a = loading_videos_from_dir(frames_a_parent_dir, template_str=template_str)
-    videos_count_b = len(videos_dict_b)
-    index_end = videos_count_b if index_end is None else min(index_end, videos_count_b)
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        futures = []
-        for i in range(index_start, index_end):
-            video_file_b = videos_dict_b.get(i)
-            video_file_a = videos_dict_a.get(i + offset)
-            if video_file_a is None or video_file_b is None:
-                print(f"跳过索引 {i}，缺少视频文件：A({i + offset})或B({i})")
-                continue
-            frames_b_dir = os.path.join(frames_b_parent_dir, str(video_file_b.no))
-            frames_a_dir = os.path.join(frames_a_parent_dir, str(video_file_a.no))
-            if not os.path.exists(frames_b_dir) or not os.path.exists(frames_a_dir):
-                print(f"跳过索引 {i}，缺少帧目录：{frames_b_dir} 或 {frames_a_dir}")
-                continue
-            raw_dms_path = os.path.join(frames_b_parent_dir, f"dms_raw_{video_file_b.no}.json")
-            export_dms_path = os.path.join(frames_a_parent_dir, f"dms_ep_{video_file_a.no}.json")
-            futures.append(pool.submit(
-                map_danmaku_main, video_file_a.path, video_file_b.path,
-                raw_dms_path, export_dms_path, frames_a_dir, frames_b_dir, aap_config=config))
-        for future in tqdm(futures, desc="映射弹幕"):
-            future.result()
+    from bili_danmaku_mapper.cli import parser, run_batch
+    from bili_danmaku_mapper import AlignConfig
+    source_dir = os.path.join(BASE_DIR, "bangumi", str(media_id))
+    target_dir = os.path.join(BASE_DIR, "bangumi", videos_a_name)
+    arguments = ["batch", "--source-dir", source_dir, "--target-dir", target_dir,
+                 "--output-dir", target_dir, "--target-pattern", template_str,
+                 "--offset", str(offset), "--workers", str(max_workers), "--start", str(index_start)]
+    if index_end is not None:
+        arguments += ["--end", str(index_end)]
+    return run_batch(parser().parse_args(arguments), AlignConfig.resolve(
+        max_hash_distance=config.max_hamming_distance if config else None))
 
 
 if __name__ == "__main__":
-    map_bili_danmaku_with_frames(28235123,
-                                 "[UHA-WINGS&JOJO][JoJo's Bizarre Adventure - Stone Ocean][25-38][x264 1080p][sc_jp]",
-                                 offset=1, template_str=r"^\[.*?\]\[.*?\]\[(?P<no>\d+)\]")
+    from bili_danmaku_mapper.cli import main
+    raise SystemExit(main())
